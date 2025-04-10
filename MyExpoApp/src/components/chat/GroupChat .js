@@ -1,0 +1,353 @@
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  SafeAreaView
+} from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import Axios from '../axios/Axios';
+import { AuthContext } from '../productedRoute/AuthanticationContext';
+import { SocketContext } from './SocketContext';
+import moment from 'moment';
+import GroupInfoModal from './GroupInfoModal';
+
+const GroupChat = ({ route, navigation }) => {
+  const { group } = route.params;
+  const { userId } = useContext(AuthContext);
+  const { socket} = useContext(SocketContext);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const flatListRef = useRef(null);
+
+  const fetchGroupMessages = async () => {
+    try {
+      setLoading(true);
+      const response = await Axios.get(`/groups/${group._id}/messages`);
+      setMessages(response.data.messages);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load group messages');
+      console.error('Failed to fetch messages:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!group?._id) return;
+    fetchGroupMessages();
+  }, [group?._id]);
+
+  useEffect(() => {
+    if (!socket || !group?._id) return;
+
+    socket.emit('joinGroup', { groupId: group._id, userId });
+
+    const handleNewMessage = (message) => {
+      setMessages(prev => {
+        const exists = prev.some(m => m._id === message._id);
+        return exists ? prev : [message, ...prev];
+      });
+
+      if (message.sender._id !== userId) {
+        markMessageAsRead(message._id);
+      }
+    };
+
+    const handleMessageUpdate = (updatedMessage) => {
+      setMessages(prev => prev.map(msg =>
+        msg._id === updatedMessage._id ? updatedMessage : msg
+      ));
+    };
+
+    const handleMessageDelete = ({ messageId }) => {
+      setMessages(prev => prev.filter(msg => msg._id !== messageId));
+    };
+
+    socket.on('newGroupMessage', handleNewMessage);
+    socket.on('groupMessageUpdated', handleMessageUpdate);
+    socket.on('groupMessageDeleted', handleMessageDelete);
+
+    return () => {
+      socket.emit('leaveGroup', { groupId: group._id, userId });
+      socket.off('newGroupMessage', handleNewMessage);
+      socket.off('groupMessageUpdated', handleMessageUpdate);
+      socket.off('groupMessageDeleted', handleMessageDelete);
+    };
+  }, [socket, group?._id, userId]);
+
+  const markMessageAsRead = (messageId) => {
+    if (socket) {
+      socket.emit('markGroupMessageAsRead', {
+        messageId,
+        groupId: group._id,
+        userId
+      });
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || sending) return;
+
+    try {
+      setSending(true);
+      const messageData = {
+        groupId: group._id,
+        senderId: userId,
+        content: newMessage.trim()
+      };
+
+      if (socket) {
+        socket.emit('sendGroupMessage', messageData);
+      }
+      setNewMessage('');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to send message');
+      console.error('Error sending message:', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const renderMessage = ({ item }) => {
+    const isCurrentUser = item.sender._id === userId;
+    const isDeleted = item.isDeleted;
+    const messageTime = moment(item.createdAt).format('h:mm A')
+
+    if (isDeleted) {
+      return (
+        <View style={[styles.messageContainer, styles.deletedMessage]}>
+          <Text style={styles.deletedMessageText}>Message deleted</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[
+        styles.messageBubble,
+        isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble
+      ]}>
+        {!isCurrentUser && (
+          <Text style={styles.senderName}>{item.sender.name}</Text>
+        )}
+        <Text style={styles.messageText}>{item.message}</Text>
+        <View style={styles.messageMeta}>
+          <Text style={styles.timeText}>{messageTime}</Text>
+          {item.isEdited && (
+            <Text style={styles.editedText}>(edited)</Text>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="arrow-back" size={24} color="#FFF" />
+        </TouchableOpacity>
+
+        <View style={styles.headerContent}>
+          <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
+          <Text style={styles.memberCount}>{group.members?.length || 0} members</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.infoButton}
+          onPress={() => setShowGroupInfo(true)}
+        >
+          <Icon name="more-vert" size={24} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        keyExtractor={(item) => item._id}
+        renderItem={renderMessage}
+        contentContainerStyle={styles.messagesContainer}
+        inverted
+        showsVerticalScrollIndicator={false}
+      />
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.inputWrapper}
+      >
+        <TextInput
+          style={styles.input}
+          value={newMessage}
+          onChangeText={setNewMessage}
+          placeholder="Type a message..."
+          placeholderTextColor="#999"
+          multiline
+          maxLength={500}
+        />
+        <TouchableOpacity
+          style={styles.sendButton}
+          onPress={sendMessage}
+          disabled={!newMessage.trim() || sending}
+        >
+          {sending ? (
+            <ActivityIndicator size="small" color="#4CAF50" />
+          ) : (
+            <Icon
+              name="send"
+              size={24}
+              color={newMessage.trim() ? '#4CAF50' : '#CCC'}
+            />
+          )}
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+
+      <GroupInfoModal
+        visible={showGroupInfo}
+        onClose={() => setShowGroupInfo(false)}
+        group={group}
+        // members={groupMembers}
+        userId={userId}
+        navigation={navigation}
+      />
+    </SafeAreaView>
+  );
+};
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#4CAF50',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  backButton: {
+    marginRight: 10,
+  },
+  headerContent: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  groupName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    maxWidth: '70%',
+  },
+  memberCount: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  infoButton: {
+    marginLeft: 10,
+  },
+  messagesContainer: {
+    padding: 10,
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  currentUserBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#DCF8C6',
+    borderTopRightRadius: 0,
+  },
+  otherUserBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 0,
+  },
+  senderName: {
+    fontWeight: 'bold',
+    fontSize: 12,
+    color: '#555',
+    marginBottom: 4,
+  },
+  messageText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  messageMeta: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  timeText: {
+    fontSize: 10,
+    color: '#666',
+    marginRight: 5,
+  },
+  editedText: {
+    fontSize: 10,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  deletedMessage: {
+    backgroundColor: '#f5f5f5',
+    alignSelf: 'center',
+  },
+  deletedMessageText: {
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    padding: 10,
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    alignItems: 'center',
+  },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    maxHeight: 100,
+    marginRight: 10,
+    backgroundColor: '#F9F9F9',
+  },
+  sendButton: {
+    padding: 10,
+  },
+  
+});
+
+export default GroupChat;
