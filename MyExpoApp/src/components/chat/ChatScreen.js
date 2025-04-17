@@ -12,14 +12,17 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
-  Alert
+  Alert,
+  Linking
 } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import Axios from '../axios/Axios';
 import moment from 'moment';
 import { AuthContext } from '../productedRoute/AuthanticationContext';
 import { SocketContext } from './SocketContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import * as Location from 'expo-location';
+import LocationScreen from './LocationScreen';
 
 const ChatScreen = () => {
   const route = useRoute();
@@ -33,6 +36,8 @@ const ChatScreen = () => {
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const { socket, onlineUsers, typingUsers, sendMessage, startTyping, markAsRead, editMessage, deleteMessage } = useContext(SocketContext);
   const flatListRef = useRef(null);
   const textInputRef = useRef(null);
@@ -165,7 +170,64 @@ const ChatScreen = () => {
       setIsSending(false);
     }
   };
-  
+
+  const handleLocationShare = async () => {
+    setShowLinkModal(false);
+    
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+        if (newStatus !== 'granted') {
+          Alert.alert(
+            'Permission Denied',
+            'You need to enable location permissions in settings to share your location.',
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel'
+              },
+              {
+                text: 'Open Settings',
+                onPress: () => Linking.openSettings()
+              }
+            ]
+          );
+          return;
+        }
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        Alert.alert(
+          'Location Services Disabled',
+          'Please enable location services to share your location',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+          ]
+        );
+        return;
+      }
+
+      setShowLocationModal(true);
+    } catch (error) {
+      console.error('Error checking location permissions:', error);
+      Alert.alert('Error', 'Failed to check location permissions');
+    }
+  };
+
+  const handleSendLocation = async (location) => {
+    try {
+      const locationMessage = `My location: https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
+      await sendMessage(user._id, locationMessage);
+      setShowLocationModal(false);
+    } catch (error) {
+      console.error('Error sending location:', error);
+      Alert.alert('Error', 'Failed to send location');
+    }
+  };
+
   const handleEditMessage = (message) => {
     setSelectedMessage(message);
     setShowOptions(true);
@@ -175,6 +237,7 @@ const ChatScreen = () => {
     setEditingMessage(selectedMessage);
     setNewMessage(selectedMessage.text);
     setShowOptions(false);
+    textInputRef.current?.focus();
   };
 
   const handleDelete = () => {
@@ -184,28 +247,21 @@ const ChatScreen = () => {
 
   const confirmDelete = async () => {
     try {
-      const success = await deleteMessage(selectedMessage._id);
-      if (success) {
-        setMessages(prev => prev.filter(msg => msg._id !== selectedMessage._id));
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to delete message');
-      console.error('Error deleting message:', error);
-    } finally {
+      await deleteMessage(selectedMessage._id);
       setShowDeleteConfirm(false);
-      setSelectedMessage(null);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      Alert.alert('Error', 'Failed to delete message');
     }
+  };
+
+  const closeOptions = () => {
+    setShowOptions(false);
   };
 
   const cancelEditing = () => {
     setEditingMessage(null);
     setNewMessage('');
-    textInputRef.current?.focus();
-  };
-
-  const closeOptions = () => {
-    setShowOptions(false);
-    setSelectedMessage(null);
   };
 
   const renderMessage = ({ item }) => (
@@ -222,7 +278,7 @@ const ChatScreen = () => {
         </Text>
         {item.sender === userId && (
           <View style={styles.messageActions}>
-             {item.status === 'failed' ? (
+            {item.status === 'failed' ? (
               <MaterialIcons name="error" size={16} color="red" />
             ) : (
               <>
@@ -245,8 +301,6 @@ const ChatScreen = () => {
     </View>
   );
 
-  
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -267,17 +321,30 @@ const ChatScreen = () => {
           </View>
         </View>
 
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={item => item._id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.messagesContainer}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        />
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={item => item._id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messagesContainer}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          />
+        )}
 
         <View style={styles.inputContainer}>
+          <TouchableOpacity 
+            style={styles.linkButton}
+            onPress={() => setShowLinkModal(true)}
+          >
+            <FontAwesome name="link" size={24} color="#007AFF" />
+          </TouchableOpacity>
+          
           <TextInput
             ref={textInputRef}
             style={styles.input}
@@ -313,6 +380,34 @@ const ChatScreen = () => {
         {newMessage.length > maxWord && (
           <Text style={styles.errorText}>Message limit is {maxWord} characters</Text>
         )}
+
+        <Modal visible={showLinkModal} transparent animationType="fade" onRequestClose={() => setShowLinkModal(false)}>
+          <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
+            <View style={styles.linkOptionsContainer}>
+              <TouchableOpacity 
+                onPress={handleLocationShare} 
+                style={styles.linkOptionButton}
+              >
+                <FontAwesome name="map-marker" size={24} color="#007AFF" />
+                <Text style={styles.linkOptionText}>Share Location</Text>
+              </TouchableOpacity>
+              <View style={styles.divider} />
+              <TouchableOpacity 
+                onPress={() => setShowLinkModal(false)} 
+                style={styles.linkOptionButton}
+              >
+                <Text style={styles.cancelOptionText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
+
+        <Modal visible={showLocationModal} animationType="slide">
+          <LocationScreen 
+            onSendLocation={handleSendLocation}
+            onClose={() => setShowLocationModal(false)}
+          />
+        </Modal>
 
         <Modal visible={showOptions} transparent animationType="fade" onRequestClose={closeOptions}>
           <Pressable style={styles.modalOverlay} onPress={closeOptions}>
@@ -368,11 +463,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -381,6 +471,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   headerInfo: {
+    flex: 1,
     marginLeft: 15,
   },
   headerText: {
@@ -390,6 +481,11 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     color: '#666',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   messagesContainer: {
     padding: 15,
@@ -402,34 +498,43 @@ const styles = StyleSheet.create({
   },
   sentMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#DCF8C6',
-    borderTopRightRadius: 0,
+    backgroundColor: '#007AFF',
+    borderBottomRightRadius: 0,
   },
   receivedMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ECECEC',
-    borderTopLeftRadius: 0,
+    backgroundColor: '#e5e5ea',
+    borderBottomLeftRadius: 0,
   },
   failedMessage: {
-    backgroundColor: '#FFCCCC',
+    backgroundColor: '#ffcccc',
   },
   messageText: {
     fontSize: 16,
+    color: '#000',
+  },
+  sentMessageText: {
+    color: '#fff',
   },
   messageFooter: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 5,
   },
   timeText: {
     fontSize: 12,
     color: '#666',
-    marginRight: 5,
+  },
+  sentTimeText: {
+    color: 'rgba(255,255,255,0.7)',
   },
   messageActions: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  editButton: {
+    marginLeft: 8,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -439,32 +544,38 @@ const styles = StyleSheet.create({
     borderTopColor: '#eee',
     backgroundColor: '#fff',
   },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    maxHeight: 100,
+  linkButton: {
     marginRight: 10,
   },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 120,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    fontSize: 16,
+  },
   sendButton: {
+    marginLeft: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     backgroundColor: '#007AFF',
     borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
   },
   disabledButton: {
     backgroundColor: '#ccc',
   },
   sendButtonText: {
     color: 'white',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   cancelButtonText: {
     color: '#007AFF',
-    marginRight: 10,
+    marginLeft: 10,
+    fontSize: 16,
   },
   errorText: {
     color: 'red',
@@ -476,45 +587,57 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  linkOptionsContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    width: '80%',
+    padding: 0,
+  },
+  linkOptionButton: {
+    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  linkOptionText: {
+    marginLeft: 15,
+    fontSize: 16,
+  },
+  cancelOptionText: {
+    fontSize: 16,
+    color: 'red',
+    textAlign: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eee',
   },
   optionsContainer: {
     backgroundColor: 'white',
     borderRadius: 10,
     width: '80%',
-    padding: 15,
   },
   optionButton: {
+    padding: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
   },
   optionText: {
+    marginLeft: 15,
     fontSize: 16,
-    marginLeft: 10,
-  },
-  cancelOptionText: {
-    fontSize: 16,
-    color: '#007AFF',
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 5,
   },
   confirmOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   confirmContainer: {
     backgroundColor: 'white',
     borderRadius: 10,
-    width: '80%',
     padding: 20,
+    width: '80%',
   },
   confirmTitle: {
     fontSize: 18,
@@ -524,22 +647,24 @@ const styles = StyleSheet.create({
   confirmText: {
     fontSize: 16,
     marginBottom: 20,
+    color: '#666',
   },
   confirmButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
   confirmButton: {
-    padding: 10,
-    marginLeft: 15,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginLeft: 10,
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    color: '#007AFF',
   },
   deleteButton: {
     backgroundColor: 'red',
     borderRadius: 5,
-    paddingHorizontal: 15,
-  },
-  confirmButtonText: {
-    fontSize: 16,
   },
 });
 
