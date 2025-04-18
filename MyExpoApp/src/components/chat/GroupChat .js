@@ -12,7 +12,8 @@ import {
   SafeAreaView,
   Modal,
   Pressable,
-  Alert
+  Alert,
+  Linking
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -21,6 +22,7 @@ import { AuthContext } from '../productedRoute/AuthanticationContext';
 import { SocketContext } from './SocketContext';
 import moment from 'moment';
 import GroupInfoModal from './GroupInfoModal';
+import LocationSharingModal from './LocationSharingModel';
 
 const GroupChat = ({ route, navigation }) => {
   const { group } = route.params;
@@ -36,6 +38,7 @@ const GroupChat = ({ route, navigation }) => {
   const [editingMessage, setEditingMessage] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchGroupMessages = async () => {
@@ -99,14 +102,12 @@ const GroupChat = ({ route, navigation }) => {
         navigation.setParams({ group: updatedGroup });
       }
     };
-  
 
     socket.on('newGroupMessage', handleNewMessage);
     socket.on('groupMessageUpdated', handleMessageUpdate);
     socket.on('groupMessageDeleted', handleMessageDelete);
     socket.on('memberRemoved', handleMemberRemoved);
     socket.on('groupUpdated', handleGroupUpdated);
-
 
     return () => {
       socket.emit('leaveGroup', { groupId: group._id, userId });
@@ -115,7 +116,6 @@ const GroupChat = ({ route, navigation }) => {
       socket.off('groupMessageDeleted', handleMessageDelete);
       socket.off('memberRemoved', handleMemberRemoved);
       socket.off('groupUpdated', handleGroupUpdated);
-
     };
   }, [socket, group?._id, userId, navigation]);
 
@@ -155,6 +155,24 @@ const GroupChat = ({ route, navigation }) => {
     } catch (error) {
       Alert.alert('Error', 'Failed to send message');
       console.error('Error sending message:', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendLocation = (locationMessage) => {
+    try {
+      setSending(true);
+      const messageData = {
+        groupId: group._id,
+        senderId: userId,
+        content: locationMessage
+      };
+      socket.emit('sendGroupMessage', messageData);
+      setShowLocationModal(false);
+    } catch (error) {
+      console.error('Error sending location:', error);
+      Alert.alert('Error', 'Failed to send location');
     } finally {
       setSending(false);
     }
@@ -229,7 +247,28 @@ const GroupChat = ({ route, navigation }) => {
         {!isCurrentUser && (
           <Text style={styles.senderName}>{item.sender.name}</Text>
         )}
-        <Text style={styles.messageText}>{messageContent}</Text>
+        
+        {messageContent.startsWith('My location:') ? (
+          <TouchableOpacity 
+            onPress={() => {
+              const url = messageContent.split('My location:')[1].trim();
+              Linking.openURL(url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open map');
+              });
+            }}
+          >
+            <Text style={[
+              styles.messageText,
+              { color: '#4CAF50', textDecorationLine: 'underline' }
+            ]}>
+              View Location on Map
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.messageText}>{messageContent}</Text>
+        )}
+        
         <View style={styles.messageMeta}>
           <Text style={styles.timeText}>{messageTime}</Text>
           {item.isEdited && (
@@ -291,6 +330,13 @@ const GroupChat = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.inputWrapper}
       >
+        <TouchableOpacity 
+          style={styles.locationButton}
+          onPress={() => setShowLocationModal(true)}
+        >
+          <MaterialIcons name="location-on" size={24} color="#4CAF50" />
+        </TouchableOpacity>
+        
         <TextInput
           style={styles.input}
           value={newMessage}
@@ -317,7 +363,14 @@ const GroupChat = ({ route, navigation }) => {
         </TouchableOpacity>
       </KeyboardAvoidingView>
 
-      <Modal
+      <LocationSharingModal
+        visible={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        onSend={handleSendLocation}
+        isSending={sending}
+      />
+
+      <Modal 
         visible={showMessageOptions}
         transparent={true}
         animationType="fade"
@@ -486,7 +539,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     width: '100%',
   },
-
+  messageText: {
+    fontSize: 16,
+    color: '#000',
+  },
   messageMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -519,6 +575,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     alignItems: 'center',
+  },
+  locationButton: {
+    marginRight: 10,
   },
   input: {
     flex: 1,

@@ -24,7 +24,7 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (!userId) return;
 
-    const newSocket = io('http://192.168.1.2:8000', {
+    const newSocket = io('http://192.168.1.3:8000', {
       transports: ['websocket'],
       withCredentials: true,
       reconnectionAttempts: 5,

@@ -9,7 +9,7 @@ const groupRouter = require("./routes/groupRoutes");
 const app = express();
 
 const allowedOrigins = [
-  "exp://192.168.1.2:8081", 
+  "exp://192.168.1.3:8081", 
 ];
 
 app.use(express.json());

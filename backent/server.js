@@ -14,7 +14,7 @@ const httpServer = http.createServer(app);
 
 const allowedOrigins = [
   "http://localhost:8000",
-  "exp://192.168.1.2:8081",
+  "exp://192.168.1.3:8081",
 ];
 
 const socketServer = new Server(httpServer, {

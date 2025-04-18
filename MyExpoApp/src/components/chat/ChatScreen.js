@@ -21,8 +21,8 @@ import moment from 'moment';
 import { AuthContext } from '../productedRoute/AuthanticationContext';
 import { SocketContext } from './SocketContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import * as Location from 'expo-location';
-import LocationScreen from './LocationScreen';
+import LocationSharingModal from './LocationSharingModel';
+import AudioRecorder from './AudioRecorder';
 
 const ChatScreen = () => {
   const route = useRoute();
@@ -38,6 +38,7 @@ const ChatScreen = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const { socket, onlineUsers, typingUsers, sendMessage, startTyping, markAsRead, editMessage, deleteMessage } = useContext(SocketContext);
   const flatListRef = useRef(null);
   const textInputRef = useRef(null);
@@ -171,60 +172,90 @@ const ChatScreen = () => {
     }
   };
 
-  const handleLocationShare = async () => {
-    setShowLinkModal(false);
-    
+  const handleSendAudio = async (audioData) => {
     try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
-        if (newStatus !== 'granted') {
-          Alert.alert(
-            'Permission Denied',
-            'You need to enable location permissions in settings to share your location.',
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel'
-              },
-              {
-                text: 'Open Settings',
-                onPress: () => Linking.openSettings()
-              }
-            ]
-          );
-          return;
-        }
+      setIsSending(true);
+      
+      const tempMessage = {
+        _id: Date.now().toString(),
+        text: '[Audio message]',
+        audio: audioData.audio,
+        duration: audioData.duration,
+        sender: userId,
+        receiver: user._id,
+        createdAt: new Date(),
+        status: 'sending',
+        isEdited: false
+      };
+      
+      setMessages(prev => [...prev, tempMessage]);
+      
+      const response = await sendMessage(user._id, '[Audio message]', audioData);
+      
+      if (response?.data?._id) {
+        setMessages(prev => prev.map(msg => 
+          msg._id === tempMessage._id ? {
+            ...msg,
+            _id: response.data._id,
+            status: onlineUsers.includes(user._id) ? 'viewed' : 'delivered',
+            createdAt: response.data.createdAt || new Date()
+          } : msg
+        ));
       }
-
-      const servicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled) {
-        Alert.alert(
-          'Location Services Disabled',
-          'Please enable location services to share your location',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() }
-          ]
-        );
-        return;
-      }
-
-      setShowLocationModal(true);
     } catch (error) {
-      console.error('Error checking location permissions:', error);
-      Alert.alert('Error', 'Failed to check location permissions');
+      console.error('Error sending audio:', error);
+      setMessages(prev => prev.map(msg => 
+        msg.status === 'sending' ? {
+          ...msg,
+          status: 'failed'
+        } : msg
+      ));
+      Alert.alert('Error', 'Failed to send audio message');
+    } finally {
+      setIsSending(false);
     }
   };
 
-  const handleSendLocation = async (location) => {
+  const handleSendLocation = async (locationMessage) => {
     try {
-      const locationMessage = `My location: https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
-      await sendMessage(user._id, locationMessage);
+      setIsSending(true);
+      
+      const tempMessage = {
+        _id: Date.now().toString(),
+        text: locationMessage,
+        sender: userId,
+        receiver: user._id,
+        createdAt: new Date(),
+        status: 'sending'
+      };
+      
+      setMessages(prev => [...prev, tempMessage]);
+      
+      const response = await sendMessage(user._id, locationMessage);
+      
+      if (response?.data?._id) {
+        setMessages(prev => prev.map(msg => 
+          msg._id === tempMessage._id ? {
+            ...msg,
+            _id: response.data._id,
+            status: onlineUsers.includes(user._id) ? 'viewed' : 'delivered',
+            createdAt: response.data.createdAt || new Date()
+          } : msg
+        ));
+      }
+      
       setShowLocationModal(false);
     } catch (error) {
       console.error('Error sending location:', error);
+      setMessages(prev => prev.map(msg => 
+        msg.status === 'sending' ? {
+          ...msg,
+          status: 'failed'
+        } : msg
+      ));
       Alert.alert('Error', 'Failed to send location');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -270,9 +301,40 @@ const ChatScreen = () => {
       item.sender === userId ? styles.sentMessage : styles.receivedMessage,
       item.status === 'failed' && styles.failedMessage
     ]}>
-      <Text style={styles.messageText}>{item.text}</Text>
+      {item.text.startsWith('My location:') ? (
+        <TouchableOpacity 
+          onPress={() => {
+            const url = item.text.split('My location:')[1].trim();
+            Linking.openURL(url).catch(err => {
+              console.error('Failed to open URL:', err);
+              Alert.alert('Error', 'Could not open map');
+            });
+          }}
+        >
+          <Text style={[
+            item.sender === userId ? styles.sentMessageText : styles.messageText,
+            { color: '#007AFF', textDecorationLine: 'underline' }
+          ]}>
+            View Location on Map
+          </Text>
+        </TouchableOpacity>
+      ) : item.audio ? (
+        <TouchableOpacity 
+          onPress={() => {
+            Alert.alert('Audio Message', `Audio duration: ${item.duration} seconds`);
+          }}
+          style={styles.audioMessage}
+        >
+          <MaterialIcons name="play-circle-filled" size={36} color="#007AFF" />
+          <Text style={styles.audioDuration}>{formatAudioTime(item.duration)}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={item.sender === userId ? styles.sentMessageText : styles.messageText}>
+          {item.text}
+        </Text>
+      )}
       <View style={styles.messageFooter}>
-        <Text style={styles.timeText}>
+        <Text style={item.sender === userId ? styles.sentTimeText : styles.timeText}>
           {moment(item.createdAt).format('h:mm A')}
           {item.isEdited && ' • Edited'}
         </Text>
@@ -289,17 +351,25 @@ const ChatScreen = () => {
                 )}
               </>
             )}
-            <TouchableOpacity 
-              onPress={() => handleEditMessage(item)}
-              style={styles.editButton}
-            >
-              <MaterialIcons name="more-vert" size={16} color="#666" />
-            </TouchableOpacity>
+            {!item.audio && (
+              <TouchableOpacity 
+                onPress={() => handleEditMessage(item)}
+                style={styles.editButton}
+              >
+                <MaterialIcons name="more-vert" size={16} color="#666" />
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
     </View>
   );
+
+  const formatAudioTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -345,6 +415,13 @@ const ChatScreen = () => {
             <FontAwesome name="link" size={24} color="#007AFF" />
           </TouchableOpacity>
           
+          <TouchableOpacity
+            style={styles.audioButton}
+            onPress={() => setShowAudioRecorder(true)}
+          >
+            <MaterialIcons name="keyboard-voice" size={24} color="#007AFF" />
+          </TouchableOpacity>
+          
           <TextInput
             ref={textInputRef}
             style={styles.input}
@@ -385,11 +462,25 @@ const ChatScreen = () => {
           <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
             <View style={styles.linkOptionsContainer}>
               <TouchableOpacity 
-                onPress={handleLocationShare} 
+                onPress={() => {
+                  setShowLinkModal(false);
+                  setShowLocationModal(true);
+                }} 
                 style={styles.linkOptionButton}
               >
                 <FontAwesome name="map-marker" size={24} color="#007AFF" />
                 <Text style={styles.linkOptionText}>Share Location</Text>
+              </TouchableOpacity>
+              <View style={styles.divider} />
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowLinkModal(false);
+                  setShowAudioRecorder(true);
+                }}
+                style={styles.linkOptionButton}
+              >
+                <MaterialIcons name="keyboard-voice" size={24} color="#007AFF" />
+                <Text style={styles.linkOptionText}>Send Audio</Text>
               </TouchableOpacity>
               <View style={styles.divider} />
               <TouchableOpacity 
@@ -402,12 +493,21 @@ const ChatScreen = () => {
           </Pressable>
         </Modal>
 
-        <Modal visible={showLocationModal} animationType="slide">
-          <LocationScreen 
-            onSendLocation={handleSendLocation}
-            onClose={() => setShowLocationModal(false)}
-          />
+        <Modal visible={showAudioRecorder} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <AudioRecorder 
+              onRecordingComplete={handleSendAudio}
+              onCancel={() => setShowAudioRecorder(false)}
+            />
+          </View>
         </Modal>
+
+        <LocationSharingModal
+          visible={showLocationModal}
+          onClose={() => setShowLocationModal(false)}
+          onSend={handleSendLocation}
+          isSending={isSending}
+        />
 
         <Modal visible={showOptions} transparent animationType="fade" onRequestClose={closeOptions}>
           <Pressable style={styles.modalOverlay} onPress={closeOptions}>
@@ -498,7 +598,7 @@ const styles = StyleSheet.create({
   },
   sentMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#DCF8C6',
     borderBottomRightRadius: 0,
   },
   receivedMessage: {
@@ -514,7 +614,16 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   sentMessageText: {
-    color: '#fff',
+    color: '#000',
+  },
+  audioMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  audioDuration: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#007AFF',
   },
   messageFooter: {
     flexDirection: 'row',
@@ -527,7 +636,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   sentTimeText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(26, 23, 23, 0.7)',
   },
   messageActions: {
     flexDirection: 'row',
@@ -545,6 +654,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   linkButton: {
+    marginRight: 10,
+  },
+  audioButton: {
     marginRight: 10,
   },
   input: {
