@@ -1,5 +1,24 @@
 const mongoose = require("mongoose");
 
+const audioSchema = new mongoose.Schema({
+  data: {
+    type: String, 
+    required: true
+  },
+  duration: {
+    type: Number,
+    required: true
+  },
+  mimeType: {
+    type: String,
+    default: 'audio/m4a'
+  },
+  fileName: {
+    type: String,
+    required: true
+  }
+}, { _id: false });
+
 const messageSchema = new mongoose.Schema(
   {
     sender: {
@@ -14,13 +33,15 @@ const messageSchema = new mongoose.Schema(
     },
     message: {
       type: String,
-      required: true,
+    },
+    audio: {
+      type: audioSchema
     },
     read: {
       type: Boolean,
       default: false,
     },
-      isEdited: {
+    isEdited: {
       type: Boolean,
       default: false
     }

@@ -23,6 +23,8 @@ import { SocketContext } from './SocketContext';
 import moment from 'moment';
 import GroupInfoModal from './GroupInfoModal';
 import LocationSharingModal from './LocationSharingModel';
+import AudioRecorder from './AudioRecorder';
+import AudioPlayer from './AudioPlayer';
 
 const GroupChat = ({ route, navigation }) => {
   const { group } = route.params;
@@ -39,6 +41,7 @@ const GroupChat = ({ route, navigation }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchGroupMessages = async () => {
@@ -160,6 +163,27 @@ const GroupChat = ({ route, navigation }) => {
     }
   };
 
+  const handleSendAudio = async (audioData) => {
+    try {
+      setSending(true);
+      
+      const messageData = {
+        groupId: group._id,
+        senderId: userId,
+        audio: audioData,
+        content: '[Audio message]'
+      };
+      
+      socket.emit('sendGroupMessage', messageData);
+    } catch (error) {
+      console.error('Error sending audio:', error);
+      Alert.alert('Error', 'Failed to send audio message');
+    } finally {
+      setSending(false);
+      setShowAudioRecorder(false);
+    }
+  };
+
   const handleSendLocation = (locationMessage) => {
     try {
       setSending(true);
@@ -265,6 +289,10 @@ const GroupChat = ({ route, navigation }) => {
               View Location on Map
             </Text>
           </TouchableOpacity>
+        ) : item.audio ? (
+          <View style={styles.audioMessageContainer}>
+            <AudioPlayer audioData={item.audio} />
+          </View>
         ) : (
           <Text style={styles.messageText}>{messageContent}</Text>
         )}
@@ -337,6 +365,13 @@ const GroupChat = ({ route, navigation }) => {
           <MaterialIcons name="location-on" size={24} color="#4CAF50" />
         </TouchableOpacity>
         
+        <TouchableOpacity
+          style={styles.audioButton}
+          onPress={() => setShowAudioRecorder(true)}
+        >
+          <MaterialIcons name="keyboard-voice" size={24} color="#4CAF50" />
+        </TouchableOpacity>
+        
         <TextInput
           style={styles.input}
           value={newMessage}
@@ -369,6 +404,20 @@ const GroupChat = ({ route, navigation }) => {
         onSend={handleSendLocation}
         isSending={sending}
       />
+
+      <Modal 
+        visible={showAudioRecorder}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAudioRecorder(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <AudioRecorder 
+            onRecordingComplete={handleSendAudio}
+            onCancel={() => setShowAudioRecorder(false)}
+          />
+        </View>
+      </Modal>
 
       <Modal 
         visible={showMessageOptions}
@@ -579,6 +628,9 @@ const styles = StyleSheet.create({
   locationButton: {
     marginRight: 10,
   },
+  audioButton: {
+    marginRight: 10,
+  },
   input: {
     flex: 1,
     borderWidth: 1,
@@ -657,6 +709,13 @@ const styles = StyleSheet.create({
   },
   confirmButtonText: {
     fontSize: 16,
+  },
+  audioMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 20,
   },
 });
 

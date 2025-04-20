@@ -9,6 +9,7 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingInterval = useRef(null);
+  const [recordingUri, setRecordingUri] = useState(null);
 
   const startRecording = async () => {
     try {
@@ -16,6 +17,7 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
       });
 
       const { recording } = await Audio.Recording.createAsync(
@@ -49,20 +51,28 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
       });
 
       const uri = recording.getURI();
+      setRecordingUri(uri);
+
       if (recordingDuration < 1) {
         Alert.alert('Too short', 'Recording must be at least 1 second');
         onCancel();
         return;
       }
 
+      // Read the audio file as base64
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      
       onRecordingComplete({
         audio: base64Audio,
         duration: recordingDuration,
-        uri: uri
+        uri: uri,
+        size: fileInfo.size,
+        mimeType: 'audio/m4a',
+        fileName: `audio_${Date.now()}.m4a`
       });
       
       setRecording(null);
@@ -75,6 +85,7 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
   };
 
   useEffect(() => {
+    startRecording();
     return () => {
       if (recordingInterval.current) {
         clearInterval(recordingInterval.current);
@@ -83,10 +94,6 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
         recording.stopAndUnloadAsync();
       }
     };
-  }, []);
-
-  useEffect(() => {
-    startRecording();
   }, []);
 
   return (
@@ -129,37 +136,36 @@ const formatTime = (seconds) => {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    justifyContent: 'center',
     backgroundColor: 'white',
-    borderRadius: 10,
     padding: 20,
-    width: '80%',
-    alignSelf: 'center',
+    borderRadius: 10,
   },
   recordingContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 30,
   },
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   recordingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: 'red',
     marginRight: 8,
   },
   recordingText: {
     fontSize: 16,
-    color: '#333',
+    color: 'red',
   },
   durationText: {
     fontSize: 16,
     color: '#333',
-    fontWeight: 'bold',
   },
   buttonsContainer: {
     flexDirection: 'row',
@@ -167,17 +173,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    padding: 10,
+    padding: 15,
   },
   cancelButtonText: {
-    color: '#007AFF',
     fontSize: 16,
+    color: '#007AFF',
   },
   stopButton: {
     backgroundColor: 'red',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    borderRadius: 30,
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
   },

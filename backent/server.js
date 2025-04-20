@@ -14,7 +14,7 @@ const httpServer = http.createServer(app);
 
 const allowedOrigins = [
   "http://localhost:8000",
-  "exp://192.168.1.3:8081",
+  "exp://192.168.1.2:8081",
 ];
 
 const socketServer = new Server(httpServer, {
@@ -101,36 +101,50 @@ socketServer.on("connection", (socket) => {
     }
   });
   
-  socket.on("sendMessage", async ({ sender, receiver, message, timestamp }) => {
+  socket.on("sendMessage", async ({ sender, receiver, message, timestamp, audioData }) => {
     try {
-      const newMessage = new Message({
-        sender,
-        receiver,
-        message,
-        read: false,
-        createdAt: timestamp
-      });
+      let newMessage;
+      
+      if (audioData) {
+        newMessage = new Message({
+          sender,
+          receiver,
+          audio: {
+            data: audioData.audio,
+            duration: audioData.duration,
+            mimeType: audioData.mimeType,
+            fileName: audioData.fileName 
+          },
+          read: false,
+          createdAt: timestamp
+        });
+      } else {
+        newMessage = new Message({
+          sender,
+          receiver,
+          message,
+          read: false,
+          createdAt: timestamp
+        });
+      }
+      
       await newMessage.save();
-
+  
       const messageData = {
         _id: newMessage._id,
         senderId: sender,
         receiverId: receiver,
-        text: message,
+        text: newMessage.message || '[Audio message]',
+        audio: newMessage.audio,
         status: "delivered",
-        createdAt: newMessage.createdAt
+        createdAt: newMessage.createdAt,
+        isEdited: false
       };
-
+  
       socket.emit("receiveMessage", messageData);
       
       if (users[receiver]) {
         socket.to(users[receiver]).emit("receiveMessage", messageData);
-        socket.to(users[receiver]).emit("newMessage", {
-          sender: sender,
-          message: message,
-          status: "delivered",
-          createdAt: newMessage.createdAt
-        });
       }
     } catch (error) {
       console.error("[socket/sendMessage] Error:", error);
@@ -519,6 +533,7 @@ socket.on("deleteGroup", async ({ groupId, requestingUserId }) => {
   }
 });
 
+
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
     Object.keys(users).forEach((userId) => {
@@ -531,7 +546,7 @@ socket.on("deleteGroup", async ({ groupId, requestingUserId }) => {
   });
 });
 
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT ;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
+}); 

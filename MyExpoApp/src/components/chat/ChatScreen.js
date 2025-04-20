@@ -23,6 +23,7 @@ import { SocketContext } from './SocketContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import LocationSharingModal from './LocationSharingModel';
 import AudioRecorder from './AudioRecorder';
+import AudioPlayer from './AudioPlayer';
 
 const ChatScreen = () => {
   const route = useRoute();
@@ -57,7 +58,8 @@ const ChatScreen = () => {
           receiver: msg.receiver,
           createdAt: msg.createdAt,
           status: msg.read ? 'viewed' : 'delivered',
-          isEdited: msg.isEdited 
+          isEdited: msg.isEdited,
+          audio: msg.audio
         })));
         markAsRead(user._id);
       } finally {
@@ -81,7 +83,8 @@ const ChatScreen = () => {
           receiver: message.receiverId,
           createdAt: message.createdAt || new Date(),
           status: message.status || 'delivered',
-          isEdited: message.isEdited
+          isEdited: message.isEdited,
+          audio: message.audio
         }];
       });
     
@@ -179,13 +182,11 @@ const ChatScreen = () => {
       const tempMessage = {
         _id: Date.now().toString(),
         text: '[Audio message]',
-        audio: audioData.audio,
-        duration: audioData.duration,
+        audio: audioData,
         sender: userId,
         receiver: user._id,
         createdAt: new Date(),
         status: 'sending',
-        isEdited: false
       };
       
       setMessages(prev => [...prev, tempMessage]);
@@ -213,6 +214,7 @@ const ChatScreen = () => {
       Alert.alert('Error', 'Failed to send audio message');
     } finally {
       setIsSending(false);
+      setShowAudioRecorder(false);
     }
   };
 
@@ -319,15 +321,9 @@ const ChatScreen = () => {
           </Text>
         </TouchableOpacity>
       ) : item.audio ? (
-        <TouchableOpacity 
-          onPress={() => {
-            Alert.alert('Audio Message', `Audio duration: ${item.duration} seconds`);
-          }}
-          style={styles.audioMessage}
-        >
-          <MaterialIcons name="play-circle-filled" size={36} color="#007AFF" />
-          <Text style={styles.audioDuration}>{formatAudioTime(item.duration)}</Text>
-        </TouchableOpacity>
+        <View style={styles.audioMessageContainer}>
+          <AudioPlayer audioData={item.audio} />
+        </View>
       ) : (
         <Text style={item.sender === userId ? styles.sentMessageText : styles.messageText}>
           {item.text}
@@ -364,12 +360,6 @@ const ChatScreen = () => {
       </View>
     </View>
   );
-
-  const formatAudioTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -571,7 +561,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   headerInfo: {
-    flex: 1,
     marginLeft: 15,
   },
   headerText: {
@@ -593,57 +582,50 @@ const styles = StyleSheet.create({
   message: {
     maxWidth: '80%',
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 10,
   },
   sentMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#DCF8C6',
+    backgroundColor: '#007AFF',
     borderBottomRightRadius: 0,
   },
   receivedMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e5e5ea',
+    backgroundColor: '#f0f0f0',
     borderBottomLeftRadius: 0,
   },
   failedMessage: {
-    backgroundColor: '#ffcccc',
-  },
-  messageText: {
-    fontSize: 16,
-    color: '#000',
+    backgroundColor: '#ffebee',
   },
   sentMessageText: {
-    color: '#000',
-  },
-  audioMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  audioDuration: {
-    marginLeft: 10,
+    color: 'white',
     fontSize: 16,
-    color: '#007AFF',
+  },
+  messageText: {
+    color: '#333',
+    fontSize: 16,
   },
   messageFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     marginTop: 5,
   },
-  timeText: {
-    fontSize: 12,
-    color: '#666',
-  },
   sentTimeText: {
-    color: 'rgba(26, 23, 23, 0.7)',
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+  },
+  timeText: {
+    color: '#666',
+    fontSize: 12,
   },
   messageActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginLeft: 10,
   },
   editButton: {
-    marginLeft: 8,
+    marginLeft: 5,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -654,102 +636,98 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   linkButton: {
-    marginRight: 10,
+    padding: 8,
   },
   audioButton: {
-    marginRight: 10,
+    padding: 8,
   },
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 120,
+    maxHeight: 100,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f0f0f0',
     borderRadius: 20,
+    marginHorizontal: 8,
     fontSize: 16,
   },
   sendButton: {
-    marginLeft: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
     backgroundColor: '#007AFF',
     borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
   },
   disabledButton: {
     backgroundColor: '#ccc',
   },
   sendButtonText: {
     color: 'white',
-    fontSize: 16,
     fontWeight: 'bold',
   },
   cancelButtonText: {
     color: '#007AFF',
-    marginLeft: 10,
-    fontSize: 16,
+    marginRight: 10,
   },
   errorText: {
     color: 'red',
     fontSize: 12,
-    marginLeft: 15,
+    textAlign: 'center',
     marginBottom: 5,
   },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   linkOptionsContainer: {
     backgroundColor: 'white',
     borderRadius: 10,
-    width: '80%',
-    padding: 0,
+    marginHorizontal: 20,
   },
-  linkOptionButton: {
-    padding: 15,
+  optionsContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    marginHorizontal: 40,
+  },
+  optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 15,
+  },
+  linkOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+  },
+  optionText: {
+    marginLeft: 10,
+    fontSize: 16,
   },
   linkOptionText: {
     marginLeft: 15,
     fontSize: 16,
   },
   cancelOptionText: {
-    fontSize: 16,
-    color: 'red',
     textAlign: 'center',
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
   },
   divider: {
     height: 1,
     backgroundColor: '#eee',
   },
-  optionsContainer: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    width: '80%',
-  },
-  optionButton: {
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  optionText: {
-    marginLeft: 15,
-    fontSize: 16,
-  },
   confirmOverlay: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   confirmContainer: {
     backgroundColor: 'white',
     borderRadius: 10,
+    marginHorizontal: 20,
     padding: 20,
-    width: '80%',
   },
   confirmTitle: {
     fontSize: 18,
@@ -766,17 +744,29 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   confirmButton: {
+    padding: 10,
+    marginLeft: 15,
+  },
+  deleteButton: {
+    backgroundColor: 'red',
+    borderRadius: 5,
     paddingHorizontal: 15,
-    paddingVertical: 10,
-    marginLeft: 10,
   },
   confirmButtonText: {
     fontSize: 16,
     color: '#007AFF',
   },
-  deleteButton: {
-    backgroundColor: 'red',
-    borderRadius: 5,
+  audioMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 20,
+  },
+  audioDuration: {
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#333',
   },
 });
 
