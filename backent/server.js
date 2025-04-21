@@ -102,6 +102,8 @@ socketServer.on("connection", (socket) => {
   });
   
   socket.on("sendMessage", async ({ sender, receiver, message, timestamp, audioData }) => {
+    console.log(audioData);
+    
     try {
       let newMessage;
       
@@ -185,7 +187,7 @@ socketServer.on("connection", (socket) => {
     console.log(`User ${userId} left group ${groupId}`);
   });
 
-  socket.on("sendGroupMessage", async ({ groupId, senderId, content }) => {
+  socket.on("sendGroupMessage", async ({ groupId, senderId, content, audio }) => {
     try {
       const group = await Group.findById(groupId);
       if (!group) {
@@ -204,6 +206,7 @@ socketServer.on("connection", (socket) => {
         sender: senderId,
         group: groupId,
         message: content,
+        audio: audio,
         readBy: [senderId]
       });
 
@@ -220,6 +223,7 @@ socketServer.on("connection", (socket) => {
       socketServer.to(groupId).emit("newGroupMessage", messageObj);
 
     } catch (error) {
+      console.error("Error sending group message:", error);
       socket.emit("error", { message: "Failed to send group message" });
     }
   });

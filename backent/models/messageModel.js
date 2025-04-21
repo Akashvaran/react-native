@@ -2,16 +2,17 @@ const mongoose = require("mongoose");
 
 const audioSchema = new mongoose.Schema({
   data: {
-    type: String, 
+    type: String,
     required: true
   },
   duration: {
-    type: Number,
-    required: true
+    type: Number, 
+    required: true,
+    min: 1
   },
   mimeType: {
     type: String,
-    default: 'audio/m4a'
+    required: true, 
   },
   fileName: {
     type: String,

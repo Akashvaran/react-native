@@ -1,5 +1,20 @@
 const mongoose = require("mongoose");
 
+const locationSchema = new mongoose.Schema({
+  lat: Number,
+  lng: Number,
+  name: String, 
+}, { _id: false });
+
+const fileSchema = new mongoose.Schema({
+  fileUrl: String,
+  fileName: String,
+  fileSize: Number,
+  mimeType: String,
+  duration: Number,      
+  thumbnailUrl: String,   
+}, { _id: false });
+
 const GroupMessageSchema = new mongoose.Schema(
   {
     sender: {
@@ -10,13 +25,18 @@ const GroupMessageSchema = new mongoose.Schema(
     group: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ChatGroup",
-      required:true
-    },
-    message: {
-      type: String,
       required: true
     },
-    
+    type: {
+      type: String,
+      enum: ['text', 'image', 'audio', 'video', 'document', 'location'],
+      required: true
+    },
+    content: {
+      text: { type: String },             
+      file: fileSchema,    
+      location: locationSchema,
+    },
     readBy: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: "ChatUser"
@@ -37,8 +57,5 @@ const GroupMessageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
-
 const GroupMessage = mongoose.model("GroupChatMessage", GroupMessageSchema);
-
 module.exports = GroupMessage;

@@ -6,14 +6,37 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
   const [recording, setRecording] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingInterval = useRef(null);
-  const [recordingUri, setRecordingUri] = useState(null);
+
+  const cleanupRecording = async () => {
+    if (recording) {
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch (err) {
+      console.log(err);
+      
+      }
+    }
+    if (recordingInterval.current) {
+      clearInterval(recordingInterval.current);
+      recordingInterval.current = null;
+    }
+    setRecording(null);
+    setRecordingDuration(0);
+  };
 
   const startRecording = async () => {
     try {
-      await Audio.requestPermissionsAsync();
+      await cleanupRecording();
+
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Please allow microphone access to record audio.');
+        onCancel();
+        return;
+      }
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -23,10 +46,10 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+
       setRecording(recording);
-      setIsRecording(true);
       setRecordingDuration(0);
-      
+
       recordingInterval.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
@@ -39,33 +62,30 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
 
   const stopRecording = async () => {
     try {
+      if (!recording) return;
+
       if (recordingInterval.current) {
         clearInterval(recordingInterval.current);
         recordingInterval.current = null;
       }
-      
-      setIsRecording(false);
+
       await recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-      });
 
       const uri = recording.getURI();
-      setRecordingUri(uri);
 
       if (recordingDuration < 1) {
         Alert.alert('Too short', 'Recording must be at least 1 second');
+        await cleanupRecording();
         onCancel();
         return;
       }
 
-      // Read the audio file as base64
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
       const fileInfo = await FileSystem.getInfoAsync(uri);
-      
+
       onRecordingComplete({
         audio: base64Audio,
         duration: recordingDuration,
@@ -74,25 +94,25 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
         mimeType: 'audio/m4a',
         fileName: `audio_${Date.now()}.m4a`
       });
-      
-      setRecording(null);
-      setRecordingDuration(0);
+
+      await cleanupRecording();
     } catch (err) {
       console.error('Failed to stop recording', err);
       Alert.alert('Error', 'Failed to stop recording');
+      await cleanupRecording();
       onCancel();
     }
+  };
+
+  const handleCancel = async () => {
+    await cleanupRecording();
+    onCancel();
   };
 
   useEffect(() => {
     startRecording();
     return () => {
-      if (recordingInterval.current) {
-        clearInterval(recordingInterval.current);
-      }
-      if (recording) {
-        recording.stopAndUnloadAsync();
-      }
+      cleanupRecording();
     };
   }, []);
 
@@ -103,7 +123,7 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
           <View style={styles.recordingDot} />
           <Text style={styles.recordingText}>Recording</Text>
         </View>
-        
+
         <Text style={styles.durationText}>
           {formatTime(recordingDuration)}
         </Text>
@@ -112,7 +132,7 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
       <View style={styles.buttonsContainer}>
         <TouchableOpacity 
           style={styles.cancelButton}
-          onPress={onCancel}
+          onPress={handleCancel}
         >
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>

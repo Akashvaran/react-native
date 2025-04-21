@@ -74,15 +74,15 @@ const ChatScreen = () => {
 
     const handleNewMessage = (message) => {
       setMessages(prev => {
-        if (prev.some(msg => msg._id === message._id)) return prev;
-        
+        const messageExists = prev.some(msg => msg._id === message._id);
+        if (messageExists) return prev;
         return [...prev, {
           _id: message._id,
-          text: message.text || message.message,
+          text: message.text ,
           sender: message.senderId,
           receiver: message.receiverId,
-          createdAt: message.createdAt || new Date(),
-          status: message.status || 'delivered',
+          createdAt: message.createdAt ,
+          status: message.status,
           isEdited: message.isEdited,
           audio: message.audio
         }];
@@ -303,14 +303,16 @@ const ChatScreen = () => {
       item.sender === userId ? styles.sentMessage : styles.receivedMessage,
       item.status === 'failed' && styles.failedMessage
     ]}>
-      {item.text.startsWith('My location:') ? (
+      {item.type === 'location' ? (
         <TouchableOpacity 
           onPress={() => {
-            const url = item.text.split('My location:')[1].trim();
-            Linking.openURL(url).catch(err => {
-              console.error('Failed to open URL:', err);
-              Alert.alert('Error', 'Could not open map');
-            });
+            const url = item.text?.split('My location:')[1]?.trim();
+            if (url) {
+              Linking.openURL(url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open map');
+              });
+            }
           }}
         >
           <Text style={[
@@ -357,7 +359,7 @@ const ChatScreen = () => {
             )}
           </View>
         )}
-      </View>
+      </View> 
     </View>
   );
 
@@ -587,7 +589,7 @@ const styles = StyleSheet.create({
   },
   sentMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#DCF8C6',
     borderBottomRightRadius: 0,
   },
   receivedMessage: {
@@ -599,11 +601,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffebee',
   },
   sentMessageText: {
-    color: 'white',
+    color: 'black',
     fontSize: 16,
   },
   messageText: {
-    color: '#333',
+    color: 'black',
     fontSize: 16,
   },
   messageFooter: {
@@ -612,11 +614,11 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   sentTimeText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'black',
     fontSize: 12,
   },
   timeText: {
-    color: '#666',
+    color: 'black',
     fontSize: 12,
   },
   messageActions: {

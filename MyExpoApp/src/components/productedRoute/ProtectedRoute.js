@@ -1,4 +1,3 @@
-// ProtectedRoute.js
 import React, { useContext, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { View, ActivityIndicator } from 'react-native';

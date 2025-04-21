@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Audio } from 'expo-av';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
@@ -7,8 +7,9 @@ import * as FileSystem from 'expo-file-system';
 const AudioPlayer = ({ audioData }) => {
   const [sound, setSound] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(audioData.duration * 1000 || 0);
+  const [duration, setDuration] = useState((audioData?.duration || 0) * 1000);
 
   useEffect(() => {
     return () => {
@@ -20,18 +21,33 @@ const AudioPlayer = ({ audioData }) => {
 
   const playSound = async () => {
     try {
+      setIsLoading(true);
       if (sound) {
         await sound.unloadAsync();
       }
 
-      let uri = audioData.uri;
+      let uri = audioData?.uri;
       
-      if (!uri && audioData.audio) {
-        const fileUri = `${FileSystem.cacheDirectory}${audioData.fileName || `audio_${Date.now()}.m4a`}`;
-        await FileSystem.writeAsStringAsync(fileUri, audioData.audio, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        uri = fileUri;
+      if (!uri && audioData?.data) {
+        try {
+          const fileUri = `${FileSystem.cacheDirectory}${audioData.fileName || `audio_${Date.now()}.m4a`}`;
+          
+          const fileInfo = await FileSystem.getInfoAsync(fileUri);
+          if (!fileInfo.exists) {
+            await FileSystem.writeAsStringAsync(fileUri, audioData.data, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          }
+          
+          uri = fileUri;
+        } catch (fileError) {
+          console.error('Error creating audio file:', fileError);
+          throw new Error('Failed to create audio file');
+        }
+      }
+
+      if (!uri) {
+        throw new Error('No audio URI available');
       }
 
       const { sound: newSound } = await Audio.Sound.createAsync(
@@ -40,7 +56,7 @@ const AudioPlayer = ({ audioData }) => {
         (status) => {
           if (status.isLoaded) {
             setPosition(status.positionMillis);
-            setDuration(status.durationMillis || audioData.duration * 1000);
+            setDuration(status.durationMillis || (audioData?.duration || 0) * 1000);
             if (status.didJustFinish) {
               setIsPlaying(false);
               setPosition(0);
@@ -53,15 +69,21 @@ const AudioPlayer = ({ audioData }) => {
       setIsPlaying(true);
       await newSound.playAsync();
     } catch (error) {
-      console.error('Error playing sound', error);
+      console.error('Error playing sound:', error);
       Alert.alert('Error', 'Failed to play audio message');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const pauseSound = async () => {
-    if (sound) {
-      await sound.pauseAsync();
-      setIsPlaying(false);
+    try {
+      if (sound) {
+        await sound.pauseAsync();
+        setIsPlaying(false);
+      }
+    } catch (error) {
+      console.error('Error pausing sound:', error);
     }
   };
 
@@ -74,12 +96,19 @@ const AudioPlayer = ({ audioData }) => {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity onPress={isPlaying ? pauseSound : playSound}>
-        <MaterialIcons 
-          name={isPlaying ? "pause" : "play-arrow"} 
-          size={36} 
-          color="#007AFF" 
-        />
+      <TouchableOpacity 
+        onPress={isPlaying ? pauseSound : playSound}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="small" color="#007AFF" />
+        ) : (
+          <MaterialIcons 
+            name={isPlaying ? "pause" : "play-arrow"} 
+            size={36} 
+            color="#007AFF" 
+          />
+        )}
       </TouchableOpacity>
       
       <View style={styles.progressContainer}>
@@ -98,6 +127,7 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: '#f0f0f0',
     borderRadius: 20,
+    minWidth: 150,
   },
   progressContainer: {
     marginLeft: 10,

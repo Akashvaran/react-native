@@ -195,12 +195,13 @@ export const SocketProvider = ({ children }) => {
   };
 
 
-  const sendMessage = (receiverId, message) => {
+  const sendMessage = (receiverId, message, audioData) => {
     if (socket && message.trim()) {
       socket.emit('sendMessage', {
         sender: userId,
         receiver: receiverId,
         message,
+        audioData: audioData,
         timestamp: new Date().toISOString()
       });
     }

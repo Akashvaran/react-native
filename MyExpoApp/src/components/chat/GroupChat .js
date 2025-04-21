@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Axios from '../axios/Axios';
 import { AuthContext } from '../productedRoute/AuthanticationContext';
 import { SocketContext } from './SocketContext';
@@ -42,6 +43,7 @@ const GroupChat = ({ route, navigation }) => {
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchGroupMessages = async () => {
@@ -86,7 +88,7 @@ const GroupChat = ({ route, navigation }) => {
       } else {
         setMessages(prev => prev.map(msg => 
           msg._id === messageId 
-            ? { ...msg, deletedFor: [...(msg.deletedFor || []), userId] }
+            ? { ...msg, deletedFor: [...(msg.deletedFor ), userId] }
             : msg
         ));
       }
@@ -171,7 +173,6 @@ const GroupChat = ({ route, navigation }) => {
         groupId: group._id,
         senderId: userId,
         audio: audioData,
-        content: '[Audio message]'
       };
       
       socket.emit('sendGroupMessage', messageData);
@@ -359,17 +360,10 @@ const GroupChat = ({ route, navigation }) => {
         style={styles.inputWrapper}
       >
         <TouchableOpacity 
-          style={styles.locationButton}
-          onPress={() => setShowLocationModal(true)}
+          style={styles.linkButton}
+          onPress={() => setShowLinkModal(true)}
         >
-          <MaterialIcons name="location-on" size={24} color="#4CAF50" />
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.audioButton}
-          onPress={() => setShowAudioRecorder(true)}
-        >
-          <MaterialIcons name="keyboard-voice" size={24} color="#4CAF50" />
+          <Ionicons name="add" size={24} color="#4CAF50" />
         </TouchableOpacity>
         
         <TextInput
@@ -381,22 +375,67 @@ const GroupChat = ({ route, navigation }) => {
           multiline
           maxLength={500}
         />
-        <TouchableOpacity
-          style={styles.sendButton}
-          onPress={sendMessage}
-          disabled={!newMessage.trim() || sending}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color="#4CAF50" />
-          ) : (
-            <Icon
-              name="send"
-              size={24}
-              color={newMessage.trim() ? '#4CAF50' : '#CCC'}
-            />
-          )}
-        </TouchableOpacity>
+        
+        {newMessage.trim() ? (
+          <TouchableOpacity
+            style={styles.sendButton}
+            onPress={sendMessage}
+            disabled={sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#4CAF50" />
+            ) : (
+              <Icon
+                name="send"
+                size={24}
+                color="#4CAF50"
+              />
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.audioButton}
+            onPress={() => setShowAudioRecorder(true)}
+          >
+            <MaterialIcons name="keyboard-voice" size={24} color="#4CAF50" />
+          </TouchableOpacity>
+        )}
       </KeyboardAvoidingView>
+
+      <Modal visible={showLinkModal} transparent animationType="fade" onRequestClose={() => setShowLinkModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
+          <View style={styles.linkOptionsContainer}>
+            <TouchableOpacity 
+              onPress={() => {
+                setShowLinkModal(false);
+                setShowLocationModal(true);
+              }} 
+              style={styles.linkOptionButton}
+            >
+              <MaterialIcons name="location-on" size={24} color="#4CAF50" />
+              <Text style={styles.linkOptionText}>Share Location</Text>
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity 
+              onPress={() => {
+                setShowLinkModal(false);
+                setShowAudioRecorder(true);
+              }}
+              style={styles.linkOptionButton}
+            >
+              <MaterialIcons name="keyboard-voice" size={24} color="#4CAF50" />
+              <Text style={styles.linkOptionText}>Send Audio</Text>
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity 
+              onPress={() => setShowLinkModal(false)} 
+              style={styles.linkOptionButton}
+            >
+              <Text style={styles.cancelOptionText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       <LocationSharingModal
         visible={showLocationModal}
@@ -625,11 +664,12 @@ const styles = StyleSheet.create({
     borderTopColor: '#EEE',
     alignItems: 'center',
   },
-  locationButton: {
-    marginRight: 10,
+  linkButton: {
+    padding: 8,
+    marginRight: 5,
   },
   audioButton: {
-    marginRight: 10,
+    padding: 8,
   },
   input: {
     flex: 1,
@@ -650,6 +690,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  linkOptionsContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    width: '80%',
+  },
+  linkOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+  },
+  linkOptionText: {
+    marginLeft: 15,
+    fontSize: 16,
   },
   messageOptionsContainer: {
     backgroundColor: 'white',
@@ -698,7 +752,7 @@ const styles = StyleSheet.create({
   confirmButton: {
     padding: 10,
     borderRadius: 5,
-    marginLeft: 10,
+    marginLeft: 15,
   },
   cancelButton: {
     borderWidth: 1,
@@ -716,6 +770,7 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: '#f0f0f0',
     borderRadius: 20,
+    
   },
 });
 

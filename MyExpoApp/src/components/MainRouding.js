@@ -13,6 +13,7 @@ import { View, ActivityIndicator } from 'react-native';
 import NewGroup from './chat/NewGroup';
 import GroupChat from './chat/GroupChat ';
 import ProtectedRoute from './productedRoute/ProtectedRoute';
+import AxiosInterceptor from './axios/AxiosInterceptor';
 
 const AuthStack = createStackNavigator();
 const MainStack = createStackNavigator();
@@ -96,6 +97,7 @@ const AppContent = () => {
 const AppNavigator = () => (
   <AuthProvider>
     <SocketProvider>
+      <AxiosInterceptor/>
       <AppContent />
     </SocketProvider>
   </AuthProvider>
