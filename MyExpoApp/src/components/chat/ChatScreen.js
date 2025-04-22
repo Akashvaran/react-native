@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   FlatList,
   StyleSheet,
   KeyboardAvoidingView,
@@ -13,22 +11,33 @@ import {
   Modal,
   Pressable,
   Alert,
-  Linking
+  Linking,
+  TouchableOpacity
 } from 'react-native';
-import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Axios from '../axios/Axios';
 import moment from 'moment';
 import { AuthContext } from '../productedRoute/AuthanticationContext';
 import { SocketContext } from './SocketContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import LocationSharingModal from './LocationSharingModel';
-import AudioRecorder from './AudioRecorder';
+import MessageInput from './MessageInput';
 import AudioPlayer from './AudioPlayer';
 
 const ChatScreen = () => {
   const route = useRoute();
   const { user } = route.params;
   const { userId } = useContext(AuthContext);
+  const { 
+    socket, 
+    onlineUsers, 
+    typingUsers, 
+    sendMessage, 
+    startTyping, 
+    markAsRead, 
+    editMessage, 
+    deleteMessage 
+  } = useContext(SocketContext);
+  
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -37,12 +46,7 @@ const ChatScreen = () => {
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showLinkModal, setShowLinkModal] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
-  const { socket, onlineUsers, typingUsers, sendMessage, startTyping, markAsRead, editMessage, deleteMessage } = useContext(SocketContext);
   const flatListRef = useRef(null);
-  const textInputRef = useRef(null);
   const navigation = useNavigation();
   const maxWord = 100;
 
@@ -62,10 +66,13 @@ const ChatScreen = () => {
           audio: msg.audio
         })));
         markAsRead(user._id);
+      } catch (error) {
+        console.error('Error fetching messages:', error);
       } finally {
         setLoading(false);
       }
     };
+    
     fetchMessages();
   }, [user._id, userId]);
 
@@ -78,10 +85,10 @@ const ChatScreen = () => {
         if (messageExists) return prev;
         return [...prev, {
           _id: message._id,
-          text: message.text ,
+          text: message.text,
           sender: message.senderId,
           receiver: message.receiverId,
-          createdAt: message.createdAt ,
+          createdAt: message.createdAt,
           status: message.status,
           isEdited: message.isEdited,
           audio: message.audio
@@ -214,7 +221,6 @@ const ChatScreen = () => {
       Alert.alert('Error', 'Failed to send audio message');
     } finally {
       setIsSending(false);
-      setShowAudioRecorder(false);
     }
   };
 
@@ -245,8 +251,6 @@ const ChatScreen = () => {
           } : msg
         ));
       }
-      
-      setShowLocationModal(false);
     } catch (error) {
       console.error('Error sending location:', error);
       setMessages(prev => prev.map(msg => 
@@ -270,7 +274,6 @@ const ChatScreen = () => {
     setEditingMessage(selectedMessage);
     setNewMessage(selectedMessage.text);
     setShowOptions(false);
-    textInputRef.current?.focus();
   };
 
   const handleDelete = () => {
@@ -303,10 +306,10 @@ const ChatScreen = () => {
       item.sender === userId ? styles.sentMessage : styles.receivedMessage,
       item.status === 'failed' && styles.failedMessage
     ]}>
-      {item.type === 'location' ? (
+      {item.text?.startsWith('My location:') ? (
         <TouchableOpacity 
           onPress={() => {
-            const url = item.text?.split('My location:')[1]?.trim();
+            const url = item.text.split('My location:')[1].trim();
             if (url) {
               Linking.openURL(url).catch(err => {
                 console.error('Failed to open URL:', err);
@@ -399,107 +402,28 @@ const ChatScreen = () => {
           />
         )}
 
-        <View style={styles.inputContainer}>
-          <TouchableOpacity 
-            style={styles.linkButton}
-            onPress={() => setShowLinkModal(true)}
-          >
-            <FontAwesome name="link" size={24} color="#007AFF" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.audioButton}
-            onPress={() => setShowAudioRecorder(true)}
-          >
-            <MaterialIcons name="keyboard-voice" size={24} color="#007AFF" />
-          </TouchableOpacity>
-          
-          <TextInput
-            ref={textInputRef}
-            style={styles.input}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            onFocus={() => startTyping(user._id)}
-            placeholder={editingMessage ? "Edit your message..." : "Type a message..."}
-            placeholderTextColor="#999"
-            multiline
-          />
-          {editingMessage && (
-            <TouchableOpacity onPress={cancelEditing}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!newMessage.trim() || newMessage.length > maxWord || isSending) && styles.disabledButton
-            ]}
-            onPress={handleSend}
-            disabled={!newMessage.trim() || newMessage.length > maxWord || isSending}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Text style={styles.sendButtonText}>
-                {editingMessage ? 'Update' : 'Send'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        <MessageInput
+          value={newMessage}
+          onChangeText={setNewMessage}
+          onSend={handleSend}
+          onSendAudio={handleSendAudio}
+          onSendLocation={handleSendLocation}
+          isSending={isSending}
+          placeholder={editingMessage ? "Edit your message..." : "Type a message..."}
+          isEditing={!!editingMessage}
+          onCancelEdit={cancelEditing}
+          maxLength={maxWord}
+          buttonColor="#007AFF"
+          style={{
+            borderTopWidth: 1,
+            borderTopColor: '#eee',
+            backgroundColor: '#fff'
+          }}
+        />
+
         {newMessage.length > maxWord && (
           <Text style={styles.errorText}>Message limit is {maxWord} characters</Text>
         )}
-
-        <Modal visible={showLinkModal} transparent animationType="fade" onRequestClose={() => setShowLinkModal(false)}>
-          <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
-            <View style={styles.linkOptionsContainer}>
-              <TouchableOpacity 
-                onPress={() => {
-                  setShowLinkModal(false);
-                  setShowLocationModal(true);
-                }} 
-                style={styles.linkOptionButton}
-              >
-                <FontAwesome name="map-marker" size={24} color="#007AFF" />
-                <Text style={styles.linkOptionText}>Share Location</Text>
-              </TouchableOpacity>
-              <View style={styles.divider} />
-              <TouchableOpacity 
-                onPress={() => {
-                  setShowLinkModal(false);
-                  setShowAudioRecorder(true);
-                }}
-                style={styles.linkOptionButton}
-              >
-                <MaterialIcons name="keyboard-voice" size={24} color="#007AFF" />
-                <Text style={styles.linkOptionText}>Send Audio</Text>
-              </TouchableOpacity>
-              <View style={styles.divider} />
-              <TouchableOpacity 
-                onPress={() => setShowLinkModal(false)} 
-                style={styles.linkOptionButton}
-              >
-                <Text style={styles.cancelOptionText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Modal>
-
-        <Modal visible={showAudioRecorder} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <AudioRecorder 
-              onRecordingComplete={handleSendAudio}
-              onCancel={() => setShowAudioRecorder(false)}
-            />
-          </View>
-        </Modal>
-
-        <LocationSharingModal
-          visible={showLocationModal}
-          onClose={() => setShowLocationModal(false)}
-          onSend={handleSendLocation}
-          isSending={isSending}
-        />
 
         <Modal visible={showOptions} transparent animationType="fade" onRequestClose={closeOptions}>
           <Pressable style={styles.modalOverlay} onPress={closeOptions}>
@@ -629,48 +553,6 @@ const styles = StyleSheet.create({
   editButton: {
     marginLeft: 5,
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
-  },
-  linkButton: {
-    padding: 8,
-  },
-  audioButton: {
-    padding: 8,
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    marginHorizontal: 8,
-    fontSize: 16,
-  },
-  sendButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-  },
-  disabledButton: {
-    backgroundColor: '#ccc',
-  },
-  sendButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  cancelButtonText: {
-    color: '#007AFF',
-    marginRight: 10,
-  },
   errorText: {
     color: 'red',
     fontSize: 12,
@@ -682,11 +564,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  linkOptionsContainer: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    marginHorizontal: 20,
-  },
   optionsContainer: {
     backgroundColor: 'white',
     borderRadius: 10,
@@ -697,17 +574,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 15,
   },
-  linkOptionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-  },
   optionText: {
     marginLeft: 10,
-    fontSize: 16,
-  },
-  linkOptionText: {
-    marginLeft: 15,
     fontSize: 16,
   },
   cancelOptionText: {
@@ -764,11 +632,6 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: '#f0f0f0',
     borderRadius: 20,
-  },
-  audioDuration: {
-    marginLeft: 10,
-    fontSize: 14,
-    color: '#333',
   },
 });
 

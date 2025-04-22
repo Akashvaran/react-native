@@ -191,8 +191,7 @@ const GroupInfoModal = ({
     const roleColor = item.role === 'owner' ? '#FF9800' : 
                      item.role === 'admin' ? '#4CAF50' : '#2196F3';
 
-    const showActions = (isOwner || (isAdmin && item.role === 'member')) && 
-                       user._id !== userId;
+    const showActions = (isOwner || (isAdmin && item.role === 'member')) &&  user._id !== userId;
 
     return (
       <View style={styles.memberItem}>

@@ -4,8 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -13,18 +11,17 @@ import {
   Modal,
   Pressable,
   Alert,
-  Linking
+  Linking,
+  TouchableOpacity
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import Axios from '../axios/Axios';
 import { AuthContext } from '../productedRoute/AuthanticationContext';
 import { SocketContext } from './SocketContext';
 import moment from 'moment';
 import GroupInfoModal from './GroupInfoModal';
-import LocationSharingModal from './LocationSharingModel';
-import AudioRecorder from './AudioRecorder';
+import MessageInput from './MessageInput';
 import AudioPlayer from './AudioPlayer';
 
 const GroupChat = ({ route, navigation }) => {
@@ -41,9 +38,6 @@ const GroupChat = ({ route, navigation }) => {
   const [editingMessage, setEditingMessage] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
-  const [showLinkModal, setShowLinkModal] = useState(false);
   const flatListRef = useRef(null);
 
   const fetchGroupMessages = async () => {
@@ -88,7 +82,7 @@ const GroupChat = ({ route, navigation }) => {
       } else {
         setMessages(prev => prev.map(msg => 
           msg._id === messageId 
-            ? { ...msg, deletedFor: [...(msg.deletedFor ), userId] }
+            ? { ...msg, deletedFor: [...(msg.deletedFor || []), userId] }
             : msg
         ));
       }
@@ -168,20 +162,17 @@ const GroupChat = ({ route, navigation }) => {
   const handleSendAudio = async (audioData) => {
     try {
       setSending(true);
-      
       const messageData = {
         groupId: group._id,
         senderId: userId,
         audio: audioData,
       };
-      
       socket.emit('sendGroupMessage', messageData);
     } catch (error) {
       console.error('Error sending audio:', error);
       Alert.alert('Error', 'Failed to send audio message');
     } finally {
       setSending(false);
-      setShowAudioRecorder(false);
     }
   };
 
@@ -194,7 +185,6 @@ const GroupChat = ({ route, navigation }) => {
         content: locationMessage
       };
       socket.emit('sendGroupMessage', messageData);
-      setShowLocationModal(false);
     } catch (error) {
       console.error('Error sending location:', error);
       Alert.alert('Error', 'Failed to send location');
@@ -359,104 +349,23 @@ const GroupChat = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.inputWrapper}
       >
-        <TouchableOpacity 
-          style={styles.linkButton}
-          onPress={() => setShowLinkModal(true)}
-        >
-          <Ionicons name="add" size={24} color="#4CAF50" />
-        </TouchableOpacity>
-        
-        <TextInput
-          style={styles.input}
+        <MessageInput
           value={newMessage}
           onChangeText={setNewMessage}
+          onSend={sendMessage}
+          onSendAudio={handleSendAudio}
+          onSendLocation={handleSendLocation}
+          isSending={sending}
           placeholder={editingMessage ? "Edit your message..." : "Type a message..."}
-          placeholderTextColor="#999"
-          multiline
-          maxLength={500}
+          isEditing={!!editingMessage}
+          onCancelEdit={() => {
+            setEditingMessage(null);
+            setNewMessage('');
+          }}
+          buttonColor="#4CAF50"
+          style={{ backgroundColor: '#FFF' }}
         />
-        
-        {newMessage.trim() ? (
-          <TouchableOpacity
-            style={styles.sendButton}
-            onPress={sendMessage}
-            disabled={sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#4CAF50" />
-            ) : (
-              <Icon
-                name="send"
-                size={24}
-                color="#4CAF50"
-              />
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.audioButton}
-            onPress={() => setShowAudioRecorder(true)}
-          >
-            <MaterialIcons name="keyboard-voice" size={24} color="#4CAF50" />
-          </TouchableOpacity>
-        )}
       </KeyboardAvoidingView>
-
-      <Modal visible={showLinkModal} transparent animationType="fade" onRequestClose={() => setShowLinkModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
-          <View style={styles.linkOptionsContainer}>
-            <TouchableOpacity 
-              onPress={() => {
-                setShowLinkModal(false);
-                setShowLocationModal(true);
-              }} 
-              style={styles.linkOptionButton}
-            >
-              <MaterialIcons name="location-on" size={24} color="#4CAF50" />
-              <Text style={styles.linkOptionText}>Share Location</Text>
-            </TouchableOpacity>
-            <View style={styles.divider} />
-            <TouchableOpacity 
-              onPress={() => {
-                setShowLinkModal(false);
-                setShowAudioRecorder(true);
-              }}
-              style={styles.linkOptionButton}
-            >
-              <MaterialIcons name="keyboard-voice" size={24} color="#4CAF50" />
-              <Text style={styles.linkOptionText}>Send Audio</Text>
-            </TouchableOpacity>
-            <View style={styles.divider} />
-            <TouchableOpacity 
-              onPress={() => setShowLinkModal(false)} 
-              style={styles.linkOptionButton}
-            >
-              <Text style={styles.cancelOptionText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
-
-      <LocationSharingModal
-        visible={showLocationModal}
-        onClose={() => setShowLocationModal(false)}
-        onSend={handleSendLocation}
-        isSending={sending}
-      />
-
-      <Modal 
-        visible={showAudioRecorder}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowAudioRecorder(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <AudioRecorder 
-            onRecordingComplete={handleSendAudio}
-            onCancel={() => setShowAudioRecorder(false)}
-          />
-        </View>
-      </Modal>
 
       <Modal 
         visible={showMessageOptions}
@@ -540,7 +449,7 @@ const GroupChat = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
-
+                
       <GroupInfoModal
         visible={showGroupInfo}
         onClose={() => setShowGroupInfo(false)}
@@ -657,53 +566,15 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   inputWrapper: {
-    flexDirection: 'row',
-    padding: 10,
     backgroundColor: '#FFF',
     borderTopWidth: 1,
     borderTopColor: '#EEE',
-    alignItems: 'center',
-  },
-  linkButton: {
-    padding: 8,
-    marginRight: 5,
-  },
-  audioButton: {
-    padding: 8,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    maxHeight: 100,
-    marginRight: 10,
-    backgroundColor: '#F9F9F9',
-  },
-  sendButton: {
-    padding: 10,
   },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  linkOptionsContainer: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    width: '80%',
-  },
-  linkOptionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-  },
-  linkOptionText: {
-    marginLeft: 15,
-    fontSize: 16,
   },
   messageOptionsContainer: {
     backgroundColor: 'white',
@@ -770,7 +641,6 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: '#f0f0f0',
     borderRadius: 20,
-    
   },
 });
 

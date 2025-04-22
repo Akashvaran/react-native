@@ -18,13 +18,13 @@ export const SocketProvider = ({ children }) => {
   const [groupNotifications, setGroupNotifications] = useState([]);
 
   console.log(groups)
-
+  
 
 
   useEffect(() => {
     if (!userId) return;
 
-    const newSocket = io('http://192.168.1.2:8000', {
+    const newSocket = io('http://192.168.1.4:8000', {
       transports: ['websocket'],
       withCredentials: true,
       reconnectionAttempts: 5,

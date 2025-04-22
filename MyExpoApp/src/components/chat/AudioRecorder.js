@@ -1,35 +1,59 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Modal, Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { MaterialIcons } from '@expo/vector-icons';
 
-const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
+const AudioRecorder = ({ visible, onRecordingComplete, onCancel }) => {
   const [recording, setRecording] = useState(null);
+  const [recordingStatus, setRecordingStatus] = useState('idle'); 
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingInterval = useRef(null);
+  const isMounted = useRef(false);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      cleanupRecording();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      startRecording();
+    } else {
+      cleanupRecording();
+    }
+  }, [visible]);
 
   const cleanupRecording = async () => {
-    if (recording) {
-      try {
-        await recording.stopAndUnloadAsync();
-      } catch (err) {
-      console.log(err);
-      
-      }
-    }
     if (recordingInterval.current) {
       clearInterval(recordingInterval.current);
       recordingInterval.current = null;
     }
-    setRecording(null);
-    setRecordingDuration(0);
+    
+    if (recording) {
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch (error) {
+        console.log('Error stopping recording during cleanup:', error);
+      }
+    }
+    
+    if (isMounted.current) {
+      setRecording(null);
+      setRecordingDuration(0);
+      setRecordingStatus('idle');
+    }
   };
 
   const startRecording = async () => {
+    if (recordingStatus !== 'idle') return;
+    
     try {
-      await cleanupRecording();
-
+      setRecordingStatus('preparing');
+      
       const permission = await Audio.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert('Permission Required', 'Please allow microphone access to record audio.');
@@ -43,11 +67,17 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
         staysActiveInBackground: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
+      const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
 
-      setRecording(recording);
+      if (!isMounted.current) {
+        await newRecording.stopAndUnloadAsync();
+        return;
+      }
+
+      setRecording(newRecording);
+      setRecordingStatus('recording');
       setRecordingDuration(0);
 
       recordingInterval.current = setInterval(() => {
@@ -55,15 +85,20 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
       }, 1000);
     } catch (err) {
       console.error('Failed to start recording', err);
+      if (isMounted.current) {
+        setRecordingStatus('idle');
+      }
       Alert.alert('Error', 'Failed to start recording');
       onCancel();
     }
   };
 
   const stopRecording = async () => {
+    if (recordingStatus !== 'recording' || !recording) return;
+    
     try {
-      if (!recording) return;
-
+      setRecordingStatus('stopping');
+      
       if (recordingInterval.current) {
         clearInterval(recordingInterval.current);
         recordingInterval.current = null;
@@ -71,15 +106,13 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
 
       await recording.stopAndUnloadAsync();
 
-      const uri = recording.getURI();
-
       if (recordingDuration < 1) {
         Alert.alert('Too short', 'Recording must be at least 1 second');
-        await cleanupRecording();
         onCancel();
         return;
       }
 
+      const uri = recording.getURI();
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -94,13 +127,14 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
         mimeType: 'audio/m4a',
         fileName: `audio_${Date.now()}.m4a`
       });
-
-      await cleanupRecording();
     } catch (err) {
       console.error('Failed to stop recording', err);
       Alert.alert('Error', 'Failed to stop recording');
-      await cleanupRecording();
       onCancel();
+    } finally {
+      if (isMounted.current) {
+        setRecordingStatus('idle');
+      }
     }
   };
 
@@ -109,58 +143,92 @@ const AudioRecorder = ({ onRecordingComplete, onCancel }) => {
     onCancel();
   };
 
-  useEffect(() => {
-    startRecording();
-    return () => {
-      cleanupRecording();
-    };
-  }, []);
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  if (!visible) return null;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.recordingContainer}>
-        <View style={styles.recordingIndicator}>
-          <View style={styles.recordingDot} />
-          <Text style={styles.recordingText}>Recording</Text>
+    <Modal
+      transparent={true}
+      visible={visible}
+      animationType="slide"
+      onRequestClose={handleCancel}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.recordingContainer}>
+            <View style={styles.recordingIndicator}>
+              {recordingStatus === 'recording' && (
+                <>
+                  <View style={styles.recordingDot} />
+                  <Text style={styles.recordingText}>Recording</Text>
+                </>
+              )}
+              {recordingStatus === 'preparing' && (
+                <Text style={styles.recordingText}>Preparing...</Text>
+              )}
+              {recordingStatus === 'stopping' && (
+                <Text style={styles.recordingText}>Processing...</Text>
+              )}
+            </View>
+
+            <Text style={styles.durationText}>
+              {formatTime(recordingDuration)}
+            </Text>
+          </View>
+
+          <View style={styles.buttonsContainer}>
+            <TouchableOpacity 
+              style={styles.cancelButton}
+              onPress={handleCancel}
+              disabled={recordingStatus === 'stopping'}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[
+                styles.stopButton,
+                recordingStatus !== 'recording' && styles.disabledButton
+              ]}
+              onPress={stopRecording}
+              disabled={recordingStatus !== 'recording'}
+            >
+              <MaterialIcons name="stop" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
-
-        <Text style={styles.durationText}>
-          {formatTime(recordingDuration)}
-        </Text>
       </View>
-
-      <View style={styles.buttonsContainer}>
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={handleCancel}
-        >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.stopButton}
-          onPress={stopRecording}
-        >
-          <MaterialIcons name="stop" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
-    </View>
+    </Modal>
   );
 };
 
-const formatTime = (seconds) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-};
-
 const styles = StyleSheet.create({
-  container: {
+  modalOverlay: {
     flex: 1,
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContainer: {
     backgroundColor: 'white',
-    padding: 20,
+    marginHorizontal: 20,
     borderRadius: 10,
+    padding: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
   },
   recordingContainer: {
     flexDirection: 'row',
@@ -206,6 +274,9 @@ const styles = StyleSheet.create({
     height: 60,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
 

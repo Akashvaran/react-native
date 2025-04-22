@@ -7,18 +7,19 @@ import {
   Modal,
   Pressable,
   Text,
-  Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AudioRecorder from './AudioRecorder';
+import LocationSharingModal from './LocationSharingModel';
+import CameraScreen from './Cemara';
 
 const MessageInput = ({
   value,
   onChangeText,
   onSend,
-  onSendAudio,
-  onSendLocation,
   isSending = false,
   placeholder = "Type a message...",
   isEditing = false,
@@ -30,13 +31,42 @@ const MessageInput = ({
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const inputRef = useRef(null);
 
-  const handleSend = () => {
+  const handleSendMessage = () => {
     if (value.trim() && !isSending) {
-      onSend();
+      onSend(value, 'text');
       inputRef.current?.blur();
     }
+  };
+
+  const handleSendAudio = (audioData) => {
+    onSend(audioData, 'audio');
+  };
+
+  const handleSendLocation = (locationData) => {
+    onSend(locationData, 'location');
+  };
+
+  const handleSendImage = (imageData) => {
+    onSend({
+      url: imageData.uri,
+      fileName: imageData.fileName,
+      mimeType: imageData.mimeType,
+      width: imageData.width,
+      height: imageData.height,
+      base64: imageData.base64
+    }, 'image');
+  };
+
+  const handleAudioRecordingComplete = (audioData) => {
+    setShowAudioRecorder(false);
+    handleSendAudio(audioData);
+  };
+
+  const handleAudioRecordingCancel = () => {
+    setShowAudioRecorder(false);
   };
 
   return (
@@ -70,7 +100,7 @@ const MessageInput = ({
         ) : value.trim() ? (
           <TouchableOpacity
             style={styles.sendButton}
-            onPress={handleSend}
+            onPress={handleSendMessage}
             disabled={isSending}
           >
             {isSending ? (
@@ -83,13 +113,19 @@ const MessageInput = ({
           <TouchableOpacity
             style={styles.audioButton}
             onPress={() => setShowAudioRecorder(true)}
+            disabled={isSending}
           >
             <Icon name="keyboard-voice" size={24} color={buttonColor} />
           </TouchableOpacity>
         )}
       </View>
 
-      <Modal visible={showLinkModal} transparent animationType="fade" onRequestClose={() => setShowLinkModal(false)}>
+      <Modal 
+        visible={showLinkModal} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => setShowLinkModal(false)}
+      >
         <Pressable style={styles.modalOverlay} onPress={() => setShowLinkModal(false)}>
           <View style={styles.linkOptionsContainer}>
             <TouchableOpacity 
@@ -102,7 +138,18 @@ const MessageInput = ({
               <Icon name="location-on" size={24} color={buttonColor} />
               <Text style={styles.linkOptionText}>Share Location</Text>
             </TouchableOpacity>
-            <View style={styles.divider} />
+            
+            <TouchableOpacity 
+              onPress={() => {
+                setShowLinkModal(false);
+                setShowCamera(true);
+              }}
+              style={styles.linkOptionButton}
+            >
+              <Icon name="photo-camera" size={24} color={buttonColor} />
+              <Text style={styles.linkOptionText}>Take Photo</Text>
+            </TouchableOpacity>
+            
             <TouchableOpacity 
               onPress={() => {
                 setShowLinkModal(false);
@@ -113,7 +160,9 @@ const MessageInput = ({
               <Icon name="keyboard-voice" size={24} color={buttonColor} />
               <Text style={styles.linkOptionText}>Send Audio</Text>
             </TouchableOpacity>
+            
             <View style={styles.divider} />
+            
             <TouchableOpacity 
               onPress={() => setShowLinkModal(false)} 
               style={styles.linkOptionButton}
@@ -124,24 +173,29 @@ const MessageInput = ({
         </Pressable>
       </Modal>
 
-      {showLocationModal && (
-        <LocationSharingModal
-          visible={showLocationModal}
-          onClose={() => setShowLocationModal(false)}
-          onSend={onSendLocation}
-          isSending={isSending}
-        />
-      )}
+      <LocationSharingModal
+        visible={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        onSend={handleSendLocation}
+        isSending={isSending}
+      />
 
-      {showAudioRecorder && (
-        <AudioRecorder 
-          onRecordingComplete={(audioData) => {
-            onSendAudio(audioData);
-            setShowAudioRecorder(false);
-          }}
-          onCancel={() => setShowAudioRecorder(false)}
+      <Modal
+        visible={showCamera}
+        animationType="slide"
+        onRequestClose={() => setShowCamera(false)}
+      >
+        <CameraScreen 
+          onSendImage={handleSendImage}
+          onClose={() => setShowCamera(false)}
         />
-      )}
+      </Modal>
+
+      <AudioRecorder 
+        visible={showAudioRecorder}
+        onRecordingComplete={handleAudioRecordingComplete}
+        onCancel={handleAudioRecordingCancel}
+      />
     </>
   );
 };
@@ -149,66 +203,67 @@ const MessageInput = ({
 const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
     alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#fff',
   },
   linkButton: {
-    padding: 8,
-    marginRight: 5,
-  },
-  audioButton: {
     padding: 8,
   },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#DDD',
+    minHeight: 40,
+    maxHeight: 120,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#f5f5f5',
     borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    maxHeight: 100,
-    marginRight: 10,
-    backgroundColor: '#F9F9F9',
+    marginHorizontal: 5,
+    fontSize: 16,
   },
   sendButton: {
-    padding: 10,
+    padding: 8,
+  },
+  audioButton: {
+    padding: 8,
   },
   cancelButton: {
-    padding: 10,
+    padding: 8,
   },
   cancelButtonText: {
     fontSize: 16,
   },
   modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   linkOptionsContainer: {
     backgroundColor: 'white',
     borderRadius: 10,
     width: '80%',
+    paddingVertical: 10,
   },
   linkOptionButton: {
+    padding: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
   },
   linkOptionText: {
-    marginLeft: 15,
+    marginLeft: 10,
     fontSize: 16,
+    color: '#333',
   },
   cancelOptionText: {
     fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
   },
   divider: {
     height: 1,
-    backgroundColor: '#EEE',
+    backgroundColor: '#eee',
     marginVertical: 5,
   },
 });

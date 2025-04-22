@@ -1,18 +1,18 @@
 const mongoose = require("mongoose");
 
-const locationSchema = new mongoose.Schema({
-  lat: Number,
-  lng: Number,
-  name: String, 
-}, { _id: false });
+// const locationSchema = new mongoose.Schema({
+//   lat: Number,
+//   lng: Number,
+//   name: String, 
+// }, { _id: false });
 
 const fileSchema = new mongoose.Schema({
+  text: { type: String }, 
   fileUrl: String,
   fileName: String,
   fileSize: Number,
   mimeType: String,
-  duration: Number,      
-  thumbnailUrl: String,   
+  duration: Number,        
 }, { _id: false });
 
 const GroupMessageSchema = new mongoose.Schema(
@@ -32,10 +32,9 @@ const GroupMessageSchema = new mongoose.Schema(
       enum: ['text', 'image', 'audio', 'video', 'document', 'location'],
       required: true
     },
-    content: {
-      text: { type: String },             
+    content: {     
       file: fileSchema,    
-      location: locationSchema,
+      // location: locationSchema,
     },
     readBy: [{
       type: mongoose.Schema.Types.ObjectId,

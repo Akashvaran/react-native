@@ -1,23 +1,12 @@
 const mongoose = require("mongoose");
 
-const audioSchema = new mongoose.Schema({
-  data: {
-    type: String,
-    required: true
-  },
-  duration: {
-    type: Number, 
-    required: true,
-    min: 1
-  },
-  mimeType: {
-    type: String,
-    required: true, 
-  },
-  fileName: {
-    type: String,
-    required: true
-  }
+const fileSchema = new mongoose.Schema({
+  text: { type: String }, 
+  fileUrl: String,
+  fileName: String,
+  fileSize: Number,
+  mimeType: String,
+  duration: Number,
 }, { _id: false });
 
 const messageSchema = new mongoose.Schema(
@@ -32,11 +21,13 @@ const messageSchema = new mongoose.Schema(
       ref: "ChatUser",
       required: true,
     },
-    message: {
+    type: {
       type: String,
+      enum: ['text', 'image', 'audio', 'video', 'document', 'location'],
+      required: true
     },
-    audio: {
-      type: audioSchema
+    content: {     
+      file: fileSchema,    
     },
     read: {
       type: Boolean,
@@ -53,3 +44,4 @@ const messageSchema = new mongoose.Schema(
 const Message = mongoose.model("ChatMessage", messageSchema);
 
 module.exports = Message;
+
